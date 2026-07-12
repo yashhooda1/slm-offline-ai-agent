@@ -74,6 +74,7 @@ def run_agent(
     ]
 
     for step in range(MAX_STEPS):
+        emit("step", str(step + 1))
         response = client.chat(model=MODEL, messages=messages, tools=TOOLS)
         message = response.message if hasattr(response, "message") else response["message"]
         messages.append(_as_history(message))
