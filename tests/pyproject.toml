@@ -1,0 +1,16 @@
+[project]
+name = "slm-offline-ai-agent"
+version = "0.1.0"
+description = "A fully offline ReAct agent running on a local small language model via Ollama."
+requires-python = ">=3.12"
+dependencies = [
+    "ollama>=0.6.0",
+    "python-dotenv>=1.0.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
