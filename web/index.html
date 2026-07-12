@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>offline agent</title>
+<style>
+  /* Every asset here is local. No font CDN, no script CDN - a network call would
+     defeat the entire premise, so the type is whatever the machine already owns. */
+  :root {
+    --ground: #e4e8ed;
+    --panel:  #f4f6f8;
+    --ink:    #101720;
+    --muted:  #5b6673;
+    --rule:   #c0c8d1;
+    --signal: #a8620a;   /* tool events - instrument amber */
+    --settle: #0d6a58;   /* the final answer - the only green on the page */
+    --alarm:  #96222a;
+
+    --display: Constantia, Cambria, Georgia, "Times New Roman", serif;
+    --body: system-ui, "Segoe UI", -apple-system, sans-serif;
+    --data: "Cascadia Mono", Consolas, "SF Mono", ui-monospace, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  /* ---- masthead ---------------------------------------------------------- */
+
+  .masthead { border-bottom: 1px solid var(--rule); padding-bottom: 22px; }
+
+  .eyebrow {
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+
+  .thesis {
+    font-family: var(--display);
+    font-size: clamp(30px, 5vw, 46px);
+    font-weight: 400;
+    line-height: 1.08;
+    letter-spacing: -.015em;
+    margin: 0 0 18px;
+  }
+  .thesis em { font-style: italic; color: var(--muted); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  .chip {
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .04em;
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 4px 9px;
+    border-radius: 2px;
+  }
+  .chip b { color: var(--ink); font-weight: 600; }
+  .chip.is-cut { color: var(--settle); border-color: var(--settle); }
+  .chip.is-cut b { color: var(--settle); }
+
+  /* ---- ask --------------------------------------------------------------- */
+
+  .ask { display: flex; gap: 10px; margin: 26px 0 34px; }
+
+  .ask input {
+    flex: 1;
+    font-family: var(--body);
+    font-size: 15px;
+    color: var(--ink);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 12px 14px;
+  }
+  .ask input::placeholder { color: var(--muted); }
+  .ask input:focus-visible,
+  .ask button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+  .ask button {
+    font-family: var(--data);
+    font-size: 12px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--panel);
+    background: var(--ink);
+    border: 1px solid var(--ink);
+    border-radius: 2px;
+    padding: 12px 20px;
+    cursor: pointer;
+  }
+  .ask button:disabled { background: var(--muted); border-color: var(--muted); cursor: default; }
+
+  /* ---- the ledger: six sockets, one per step of the budget ---------------- */
+
+  .board { display: grid; grid-template-columns: 132px 1fr; gap: 32px; }
+
+  .ledger { position: sticky; top: 40px; align-self: start; }
+
+  .ledger h2 {
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    font-weight: 400;
+    color: var(--muted);
+    margin: 0 0 14px;
+  }
+
+  .socket {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 0;
+    font-family: var(--data);
+    font-size: 12px;
+    color: var(--rule);
+  }
+  /* the spine: a hairline threading the sockets together */
+  .socket::before {
+    content: "";
+    position: absolute;
+    left: 5px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: var(--rule);
+  }
+  .socket:first-of-type::before { top: 50%; }
+  .socket:last-of-type::before { bottom: 50%; }
+
+  .socket i {
+    position: relative;
+    z-index: 1;
+    width: 11px;
+    height: 11px;
+    border: 1px solid var(--rule);
+    border-radius: 50%;
+    background: var(--ground);
+    flex: none;
+  }
+  .socket.is-spent { color: var(--ink); }
+  .socket.is-spent i { border-color: var(--ink); background: var(--ink); }
+  .socket.is-live i { border-color: var(--signal); background: var(--signal); animation: pulse 1.1s ease-in-out infinite; }
+  .socket.is-live { color: var(--signal); }
+
+  @keyframes pulse { 50% { opacity: .35; } }
+
+  .budget {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    font-family: var(--data);
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  /* ---- trace ------------------------------------------------------------- */
+
+  .trace { min-height: 220px; }
+
+  .empty {
+    border: 1px dashed var(--rule);
+    border-radius: 2px;
+    padding: 26px;
+    color: var(--muted);
+  }
+  .empty p { margin: 0 0 14px; }
+  .empty ul {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-family: var(--data);
+    font-size: 12px;
+  }
+  .empty li { border: 1px solid var(--rule); padding: 3px 8px; border-radius: 2px; color: var(--ink); }
+
+  .row {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    gap: 14px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--rule);
+    animation: settle .22s ease-out;
+  }
+
+  @keyframes settle { from { opacity: 0; transform: translateY(-3px); } }
+
+  .row .tag {
+    font-family: var(--data);
+    font-size: 10px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding-top: 3px;
+  }
+
+  .row .said {
+    font-family: var(--data);
+    font-size: 13px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0;
+  }
+
+  .row.k-call .tag, .row.k-call .said { color: var(--signal); }
+  .row.k-result .said { color: var(--ink); }
+  .row.k-think .said { font-family: var(--body); color: var(--muted); font-style: italic; }
+  .row.k-error .tag, .row.k-error .said { color: var(--alarm); }
+
+  .answer {
+    margin-top: 26px;
+    border-left: 3px solid var(--settle);
+    background: var(--panel);
+    padding: 18px 20px;
+  }
+  .answer .tag {
+    font-family: var(--data);
+    font-size: 10px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--settle);
+    margin: 0 0 6px;
+  }
+  .answer p {
+    font-family: var(--display);
+    font-size: 20px;
+    line-height: 1.35;
+    margin: 0;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; }
+  }
+
+  @media (max-width: 720px) {
+    .board { grid-template-columns: 1fr; gap: 24px; }
+    .ledger { position: static; }
+    .row { grid-template-columns: 1fr; gap: 4px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">running on this machine only</p>
+    <h1 class="thesis">Six tools, six steps,<br><em>and nowhere to phone home.</em></h1>
+    <div class="chips">
+      <span class="chip">model <b id="chip-model">…</b></span>
+      <span class="chip">served at <b>127.0.0.1</b></span>
+      <span class="chip" id="chip-net">network <b>—</b></span>
+    </div>
+  </header>
+
+  <div class="ask">
+    <input id="task" autocomplete="off" autofocus
+           placeholder="what is 15% of 1240? save the answer to tip.txt">
+    <button id="go">Run task</button>
+  </div>
+
+  <div class="board">
+    <aside class="ledger">
+      <h2>Step budget</h2>
+      <div id="sockets"></div>
+      <p class="budget">A loop is a <code>while True</code> that stops when the model
+        says so. The cap is what stops it when the model won't.</p>
+    </aside>
+
+    <section class="trace" id="trace">
+      <div class="empty">
+        <p>Nothing has run yet. Give it a task and watch it think, reach for a tool, read
+          the result, and decide what to do next.</p>
+        <ul id="toollist"></ul>
+      </div>
+    </section>
+  </div>
+
+</div>
+
+<script>
+  const MAXFALLBACK = 6;
+  const el = (id) => document.getElementById(id);
+  const trace = el("trace");
+  const sockets = el("sockets");
+  const input = el("task");
+  const go = el("go");
+
+  let maxSteps = MAXFALLBACK;
+
+  // Network chip. If the browser says we're offline and the agent still answers,
+  // that's the whole claim of this project, demonstrated rather than asserted.
+  function paintNetwork() {
+    const chip = el("chip-net");
+    const off = !navigator.onLine;
+    chip.classList.toggle("is-cut", off);
+    chip.innerHTML = off
+      ? 'network <b>cut — still working</b>'
+      : 'network <b>up (unused)</b>';
+  }
+  addEventListener("online", paintNetwork);
+  addEventListener("offline", paintNetwork);
+  paintNetwork();
+
+  function paintSockets(spent = 0, live = 0) {
+    sockets.innerHTML = "";
+    for (let n = 1; n <= maxSteps; n++) {
+      const row = document.createElement("div");
+      row.className = "socket" + (n < live || n <= spent ? " is-spent" : "") + (n === live ? " is-live" : "");
+      row.innerHTML = `<i></i><span>step ${n}</span>`;
+      sockets.appendChild(row);
+    }
+  }
+
+  fetch("/meta").then(r => r.json()).then(meta => {
+    maxSteps = meta.max_steps;
+    el("chip-model").textContent = meta.model;
+    el("toollist").innerHTML = meta.tools.map(t => `<li>${t}</li>`).join("");
+    paintSockets();
+  }).catch(() => paintSockets());
+
+  const LABEL = { think: "thought", tool_call: "reaches for", tool_result: "reads back", error: "failed" };
+  const KIND = { think: "k-think", tool_call: "k-call", tool_result: "k-result", error: "k-error" };
+
+  function addRow(kind, text) {
+    const row = document.createElement("div");
+    row.className = "row " + (KIND[kind] || "");
+    row.innerHTML = `<div class="tag"></div><pre class="said"></pre>`;
+    row.querySelector(".tag").textContent = LABEL[kind] || kind;
+    row.querySelector(".said").textContent = text;
+    trace.appendChild(row);
+    row.scrollIntoView({ block: "nearest" });
+  }
+
+  function addAnswer(text) {
+    const box = document.createElement("div");
+    box.className = "answer";
+    box.innerHTML = `<p class="tag">final answer</p><p></p>`;
+    box.querySelectorAll("p")[1].textContent = text || "(the model returned nothing)";
+    trace.appendChild(box);
+    box.scrollIntoView({ block: "nearest" });
+  }
+
+  function run() {
+    const task = input.value.trim();
+    if (!task) { input.focus(); return; }
+
+    trace.innerHTML = "";
+    paintSockets();
+    go.disabled = true;
+    go.textContent = "Running";
+
+    const stream = new EventSource("/run?task=" + encodeURIComponent(task));
+    let step = 0;
+
+    stream.onmessage = (ev) => {
+      const { kind, text } = JSON.parse(ev.data);
+
+      if (kind === "step") {
+        step = Number(text);
+        paintSockets(step - 1, step);
+        return;
+      }
+      if (kind === "done") {
+        stream.close();
+        paintSockets(step, 0);
+        go.disabled = false;
+        go.textContent = "Run task";
+        input.select();
+        return;
+      }
+      if (kind === "final") { addAnswer(text); return; }
+      addRow(kind, text);
+    };
+
+    stream.onerror = () => {
+      stream.close();
+      go.disabled = false;
+      go.textContent = "Run task";
+    };
+  }
+
+  go.addEventListener("click", run);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+</script>
+</body>
+</html>
