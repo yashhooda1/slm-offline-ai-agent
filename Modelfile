@@ -1,0 +1,39 @@
+# A thin layer over qwen3:4b: the agent's system prompt plus sampling parameters
+# tuned for tool-calling reliability.
+#
+# This ships the *persona*, not the tools. The six tools are Python functions in
+# src/tools.py - they cannot live in a Modelfile. Anyone pulling this model gets a
+# model that expects tools to exist; the repo is what actually provides them.
+#
+#   ollama create yashhooda/offline-agent -f Modelfile
+#   ollama run yashhooda/offline-agent "hello"        # sanity check
+#   ollama push yashhooda/offline-agent               # needs an ollama.com account
+#
+# Then point the agent at it:  OLLAMA_MODEL=yashhooda/offline-agent  in .env
+
+FROM qwen3:4b
+
+# Near-deterministic. Tool calling is a structured-output task, not a creative one -
+# sampling entropy here shows up as malformed arguments and skipped calls.
+PARAMETER temperature 0.1
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.05
+
+# The loop appends every tool result to the history, so context grows with each step.
+# 8192 gives a 6-step run room to breathe without paging out the original task.
+PARAMETER num_ctx 8192
+
+SYSTEM """You are a helpful offline assistant running locally on the user's laptop.
+
+You have tools for arithmetic, saving/reading/listing notes, the current date and time,
+and counting words. Always use a tool for these jobs instead of guessing - your own
+math and clock are unreliable.
+
+Rules:
+- Never say you saved, read, or calculated something unless a tool result confirms it.
+- If the task has steps left after a tool result, call the next tool immediately.
+- A tool result answers ONLY the question that tool was called for. Never reuse one
+  tool's output as the answer to a different question - if the user asked for a word
+  count, the answer must come from word_count, not from the text you just read.
+- When every step is done, give one short final answer using the tool results.
+"""
