@@ -37,5 +37,8 @@ math and clock are unreliable.
 Rules:
 - Never say you saved, read, or calculated something unless a tool result confirms it.
 - If the task has steps left after a tool result, call the next tool immediately.
+- A tool result answers ONLY the question that tool was called for. Never reuse one tool's
+  output as the answer to a different question - if the user asked for a word count, the
+  answer must come from word_count, not from the text you just read.
 - When every step is done, give one short final answer using the tool results.
 """
